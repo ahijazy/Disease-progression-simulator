@@ -1,0 +1,534 @@
+library(gsl)
+library(pracma)
+library(actuar)
+#sensitivity
+load("C:\\Users\\Ayman\\Desktop\\Rcpp code FINAL\\Adjusted\\LOG_LOGISTIC\\LLogis_HIGH_MST\\log_logis_HIGH_MST_10K_data.Rdata")
+
+############################################################################
+K=10
+inter_screen=1
+t_avg=52
+t_min=40
+t_max=64
+############################################################################
+
+sensitivity=function(x,b0,b1)		#sensitivity function
+{
+  return(1/(1+exp(-1*b0-b1*(x-t_avg))))
+}
+############################################################################
+#Loading the cpp functions
+Rcpp::sourceCpp("C:\\Users\\Ayman\\Desktop\\Rcpp code FINAL\\CPP_CODE\\log_logistic\\w_q_d1.cpp") 	# integral of w(x) Q(t-x)
+
+
+############################################################################
+
+prod_sensitivity_D=function(k,t_1,b0,b1) 	# probability of not being detected by the previous screens 
+											# returns a vector of length k where the kth element is 1 
+											# this is multiplied by sensitivity gives the multipliers for function D
+	{
+		#first screen
+		if (k==1)
+		{
+		return ( sensitivity(t_1,b0,b1))
+		}
+		# other screens
+		if(k>1)	
+	{
+		p_no_detection=NULL
+		for (i in 1: (k-1))
+			{
+			p_no_detection[i]=1-sensitivity(t_1+(i-1)*inter_screen,b0,b1)
+			}
+			res=rep(1, (k-1))	
+			for	(i in 1:(k-1))
+				{
+					for(j in i:(k-1))
+					{
+					res[i]=res[i]*p_no_detection[j]
+					}
+				}
+	detection_at_k=sensitivity(t_1+(k-1)*inter_screen,b0,b1)
+	res=res*detection_at_k
+	res[k]=detection_at_k
+	return(res)
+	}
+	}
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+		D=function( k , t_1,  b0,  b1, u_prec, sd_prec, scale_sj,shape_sj)		# probability of detection by clinical symptoms
+		{
+
+		a=prod_sensitivity_D(k,t_1,b0,b1)
+		b=NULL
+		b[1]=integrate_wq(0 , t_1, k, t_1 ,u_prec, sd_prec, scale_sj,shape_sj)
+			if(k==1)
+				{
+				return(a*b)
+				}
+			if(k>1)
+			{
+				for(i in 2:k)
+				{
+				b[i]= integrate_wq ( t_1 + (i-2)*inter_screen, t_1 + (i-1) *inter_screen,k, t_1 ,u_prec, sd_prec, scale_sj,shape_sj)
+				}
+			}
+		return(sum(a*b))
+		}
+
+	DD=matrix(NA,nrow=K,ncol=25)
+	res=0
+		for( i in 1:K)
+		{
+			for(j in 1:25)
+			{
+				DD[i,j]=round(D( i , j+39,   b0_def,  b1_def, u_def, s_def,scale_def,shape_def)*N_desired,0)
+			}
+		}
+
+############################################################################
+############################################################################
+
+Rcpp::sourceCpp("C:\\Users\\Ayman\\Desktop\\Rcpp code FINAL\\CPP_CODE\\log_logistic\\w1_q_d1.cpp") 	# integral of w(x) Q(t-x)
+Rcpp::sourceCpp("C:\\Users\\Ayman\\Desktop\\Rcpp code FINAL\\CPP_CODE\\log_logistic\\wq_q_d1.cpp") 	# integral of w(x) Q(t-x)
+
+
+############################################################################
+############################################################################
+
+I=function ( k , t0, b0, b1, u_prec, sd_prec, scale_sj,shape_sj)
+{
+  if(k==1)
+  {
+    result=0
+    result= result +(1-beta(t0,b0,b1)) * integrate_wq_q(0,t0,1,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result +integrate_w1_q(t0,t0+inter_screen,1,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+    
+  }
+  
+  if(k==2)
+  {
+    result=0
+    result= result +(1-beta(t0,b0,b1)) * (1-beta(t0+inter_screen,b0,b1)) * integrate_wq_q(0,t0,2,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result +(1-beta(t0+inter_screen,b0,b1)) * integrate_wq_q(t0,t0+inter_screen,2,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result +integrate_w1_q(t0+inter_screen,t0 +inter_screen*2,2,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+    
+  }
+  
+  if (k==3)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1)) * (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * integrate_wq_q(0,t0,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * integrate_wq_q(t0,t0+inter_screen,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * integrate_wq_q(t0+inter_screen,t0+inter_screen*2,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*2,t0 +inter_screen*3,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  
+  if(k==4)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1)) * (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * integrate_wq_q(0,t0,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * integrate_wq_q(t0,t0+inter_screen,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) *  integrate_wq_q(t0+inter_screen,t0+inter_screen*2,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * integrate_wq_q(t0+inter_screen*2,t0+inter_screen*3,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*3,t0 +inter_screen*4,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  if(k==5)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))					* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) *integrate_wq_q(0,t0,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1))    * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) * integrate_wq_q(t0,t0+inter_screen,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) *  integrate_wq_q(t0+inter_screen,t0+inter_screen*2,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1))  * (1-beta(t0+inter_screen*4,b0,b1)) * integrate_wq_q(t0+inter_screen*2,t0+inter_screen*3,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))  * integrate_wq_q(t0+inter_screen*3,t0+inter_screen*4,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*4,t0 +inter_screen*5,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  if(k==6)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *integrate_wq_q(0,t0,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *integrate_wq_q(t0,t0+inter_screen,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *integrate_wq_q(t0+inter_screen,t0+inter_screen*2,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *integrate_wq_q(t0+inter_screen*2,t0+inter_screen*3,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *integrate_wq_q(t0+inter_screen*3,t0+inter_screen*4,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) *integrate_wq_q(t0+inter_screen*4, t0+inter_screen*5,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*5,t0 +inter_screen*6,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  if(k==7)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *integrate_wq_q(0,t0,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *integrate_wq_q(t0,t0+inter_screen,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *integrate_wq_q(t0+inter_screen,t0+inter_screen*2,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *integrate_wq_q(t0+inter_screen*2,t0+inter_screen*3,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *integrate_wq_q(t0+inter_screen*3,t0+inter_screen*4,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *integrate_wq_q(t0+inter_screen*4,t0+inter_screen*5,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1)) *integrate_wq_q(t0+inter_screen+5,t0+inter_screen*6,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*6,t0 +inter_screen*7,7,t0,u_prec, sd_prec,scale_sj,shape_sj)		
+    return(result) 
+  }
+  
+  if(k==8)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(0,t0,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(t0,t0+inter_screen,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(t0+inter_screen*1,t0+inter_screen*2,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(t0+inter_screen*2,t0+inter_screen*3,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(t0+inter_screen*3,t0+inter_screen*4,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(t0+inter_screen*4,t0+inter_screen*5,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(t0+inter_screen*5,t0+inter_screen*6,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*7,b0,b1)) *integrate_wq_q(t0+inter_screen*6,t0+inter_screen*7,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*7,t0 +inter_screen*8,8,t0,u_prec, sd_prec,scale_sj,shape_sj)		
+    return(result) 
+    
+  }
+  if(k==9)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(0,t0,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0,t0+inter_screen,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0+inter_screen*1,t0+inter_screen*2,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0+inter_screen*2,t0+inter_screen*3,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0+inter_screen*3,t0+inter_screen*4,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0+inter_screen*4,t0+inter_screen*5,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0+inter_screen*5,t0+inter_screen*6,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0+inter_screen*6,t0+inter_screen*7,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*8,b0,b1)) *integrate_wq_q(t0+inter_screen*7,t0+inter_screen*8,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*8,t0 +inter_screen*9,9,t0,u_prec, sd_prec,scale_sj,shape_sj)	
+    return(result)	
+  }
+  if(k==10)
+  {
+    result=0 
+    result= result + (1-beta(t0,b0,b1))					* (1-beta(t0+inter_screen,b0,b1)) 		 * (1-beta(t0+inter_screen*2 ,b0,b1))* (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(0,t0,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1))    * (1-beta(t0+inter_screen*2 ,b0,b1)) 	 * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) * (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(t0,t0+inter_screen,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1))		 * (1-beta(t0+inter_screen*4,b0,b1)) * (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(t0+inter_screen*1,t0+inter_screen*2,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1))  * (1-beta(t0+inter_screen*4,b0,b1))		 * (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(t0+inter_screen*2,t0+inter_screen*3,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))  * (1-beta(t0+inter_screen*5,b0,b1)) 	 * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(t0+inter_screen*3,t0+inter_screen*4,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1))  * (1-beta(t0+inter_screen*6,b0,b1)) 	 * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(t0+inter_screen*4,t0+inter_screen*5,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1))  * (1-beta(t0+inter_screen*7,b0,b1)) 	 * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(t0+inter_screen*5,t0+inter_screen*6,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*7,b0,b1))  * (1-beta(t0+inter_screen*8,b0,b1))	 	 * (1-beta(t0+inter_screen*9,b0,b1)) *integrate_wq_q(t0+inter_screen*6,t0+inter_screen*7,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*8,b0,b1))  *(1-beta(t0+inter_screen*9,b0,b1)) 	 	 *integrate_wq_q(t0+inter_screen*7,t0+inter_screen*8,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*9,b0,b1))  *integrate_wq_q(t0+inter_screen*8,t0+inter_screen*9,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + integrate_w1_q(t0+inter_screen*9,t0 +inter_screen*10,10,t0,u_prec, sd_prec,scale_sj,shape_sj)		
+    return(result)		
+  }
+  
+}
+############################################################################
+############################################################################
+	II=matrix(NA,nrow=K,ncol=25)
+	res=0
+		for( i in 1:K)
+		{
+			for(j in 1:25)
+			{
+				II[i,j]=round(I( i , j+39,   b0_def,  b1_def, u_def, s_def,scale_def,shape_def)*N_desired,0)
+			}
+		}
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+
+log_lik_age_10=function(par)
+{
+  b0=par[1]
+  b1=par[2]
+  u_prec=par[3]
+  sd_prec=par[4]
+  scale_sj=par[5]
+  shape_sj=par[6]
+  
+  
+
+  res=0
+  for (i in 1:K)
+  {
+    for(j in 1:(tmax-tmin+1))
+    {
+      a=D(i, j+39,  b0,  b1, u_prec, sd_prec, scale_sj,shape_sj)
+      b=I(i , j+39,  b0,  b1, u_prec, sd_prec, scale_sj,shape_sj)
+      res=res+S_10[i,j]*log(a)
+      res=res+R_10[i,j]*log(b)
+      res=res+N_10[i,j]*log(1-a-b)
+    }
+  }
+
+  return(-1*res) 
+
+}
+
+ini=c(b0_def,  b1_def, u_def, s_def,scale_def,shape_def)
+log_lik_age_10(ini)
+res_age_10=nlm(p=ini,log_lik_age_10,hessian=TRUE)
+
+
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+
+
+
+Rcpp::sourceCpp("C:\\Users\\Ayman\\Desktop\\Rcpp code FINAL\\CPP_CODE\\log_logistic\\dens_w1_q.cpp") 	# integral of w(x) Q(t-x)
+Rcpp::sourceCpp("C:\\Users\\Ayman\\Desktop\\Rcpp code FINAL\\CPP_CODE\\log_logistic\\dens_wq_q.cpp") 	# integral of w(x) Q(t-x)
+
+############################################################################
+############################################################################
+############################################################################
+
+
+
+I_dens=function ( z,k , t0, b0, b1, u_prec, sd_prec, scale_sj,shape_sj)
+{
+  if(k==1)
+  {
+    result=0
+    result= result +(1-beta(t0,b0,b1)) * dens_wq_q(z,0,t0,1,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result +dens_w1_q(z,t0,t0+inter_screen,1,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+    
+  }
+  
+  if(k==2)
+  {
+    result=0
+    result= result +(1-beta(t0,b0,b1)) * (1-beta(t0+inter_screen,b0,b1)) * dens_wq_q(z,0,t0,2,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result +(1-beta(t0+inter_screen,b0,b1)) * dens_wq_q(z,t0,t0+inter_screen,2,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result +dens_w1_q(z,t0+inter_screen,t0 +inter_screen*2,2,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+    
+  }
+  
+  if (k==3)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1)) * (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * dens_wq_q(z,0,t0,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * dens_wq_q(z,t0,t0+inter_screen,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * dens_wq_q(z,t0+inter_screen,t0+inter_screen*2,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*2,t0 +inter_screen*3,3,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  
+  if(k==4)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1)) * (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * dens_wq_q(z,0,t0,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * dens_wq_q(z,t0,t0+inter_screen,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) *  dens_wq_q(z,t0+inter_screen,t0+inter_screen*2,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * dens_wq_q(z,t0+inter_screen*2,t0+inter_screen*3,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*3,t0 +inter_screen*4,4,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  if(k==5)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))					* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) *dens_wq_q(z,0,t0,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1))    * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) * dens_wq_q(z,t0,t0+inter_screen,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) *  dens_wq_q(z,t0+inter_screen,t0+inter_screen*2,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1))  * (1-beta(t0+inter_screen*4,b0,b1)) * dens_wq_q(z,t0+inter_screen*2,t0+inter_screen*3,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))  * dens_wq_q(z,t0+inter_screen*3,t0+inter_screen*4,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*4,t0 +inter_screen*5,5,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  if(k==6)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *dens_wq_q(z,0,t0,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *dens_wq_q(z,t0,t0+inter_screen,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *dens_wq_q(z,t0+inter_screen,t0+inter_screen*2,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *dens_wq_q(z,t0+inter_screen*2,t0+inter_screen*3,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) *dens_wq_q(z,t0+inter_screen*3,t0+inter_screen*4,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) *dens_wq_q(z,t0+inter_screen*4, t0+inter_screen*5,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*5,t0 +inter_screen*6,6,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    return (result)
+  }
+  if(k==7)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *dens_wq_q(z,0,t0,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *dens_wq_q(z,t0,t0+inter_screen,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *dens_wq_q(z,t0+inter_screen,t0+inter_screen*2,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *dens_wq_q(z,t0+inter_screen*2,t0+inter_screen*3,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *dens_wq_q(z,t0+inter_screen*3,t0+inter_screen*4,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) *dens_wq_q(z,t0+inter_screen*4,t0+inter_screen*5,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1)) *dens_wq_q(z,t0+inter_screen+5,t0+inter_screen*6,7,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*6,t0 +inter_screen*7,7,t0,u_prec, sd_prec,scale_sj,shape_sj)		
+    return(result) 
+  }
+  
+  if(k==8)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,0,t0,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,t0,t0+inter_screen,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,t0+inter_screen*1,t0+inter_screen*2,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,t0+inter_screen*2,t0+inter_screen*3,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,t0+inter_screen*3,t0+inter_screen*4,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,t0+inter_screen*4,t0+inter_screen*5,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,t0+inter_screen*5,t0+inter_screen*6,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*7,b0,b1)) *dens_wq_q(z,t0+inter_screen*6,t0+inter_screen*7,8,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*7,t0 +inter_screen*8,8,t0,u_prec, sd_prec,scale_sj,shape_sj)		
+    return(result) 
+    
+  }
+  if(k==9)
+  {
+    result=0
+    result= result + (1-beta(t0,b0,b1))	* (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,0,t0,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1)) * (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0,t0+inter_screen,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0+inter_screen*1,t0+inter_screen*2,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0+inter_screen*2,t0+inter_screen*3,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0+inter_screen*3,t0+inter_screen*4,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0+inter_screen*4,t0+inter_screen*5,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0+inter_screen*5,t0+inter_screen*6,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0+inter_screen*6,t0+inter_screen*7,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*8,b0,b1)) *dens_wq_q(z,t0+inter_screen*7,t0+inter_screen*8,9,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*8,t0 +inter_screen*9,9,t0,u_prec, sd_prec,scale_sj,shape_sj)	
+    return(result)	
+  }
+  if(k==10)
+  {
+    result=0 
+    result= result + (1-beta(t0,b0,b1))					* (1-beta(t0+inter_screen,b0,b1)) 		 * (1-beta(t0+inter_screen*2 ,b0,b1))* (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1))* (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,0,t0,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen,b0,b1))    * (1-beta(t0+inter_screen*2 ,b0,b1)) 	 * (1-beta(t0+inter_screen*3,b0,b1)) * (1-beta(t0+inter_screen*4,b0,b1)) * (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,t0,t0+inter_screen,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*2 ,b0,b1)) * (1-beta(t0+inter_screen*3,b0,b1))		 * (1-beta(t0+inter_screen*4,b0,b1)) * (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,t0+inter_screen*1,t0+inter_screen*2,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*3,b0,b1))  * (1-beta(t0+inter_screen*4,b0,b1))		 * (1-beta(t0+inter_screen*5,b0,b1)) * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,t0+inter_screen*2,t0+inter_screen*3,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*4,b0,b1))  * (1-beta(t0+inter_screen*5,b0,b1)) 	 * (1-beta(t0+inter_screen*6,b0,b1)) * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,t0+inter_screen*3,t0+inter_screen*4,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*5,b0,b1))  * (1-beta(t0+inter_screen*6,b0,b1)) 	 * (1-beta(t0+inter_screen*7,b0,b1)) * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,t0+inter_screen*4,t0+inter_screen*5,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*6,b0,b1))  * (1-beta(t0+inter_screen*7,b0,b1)) 	 * (1-beta(t0+inter_screen*8,b0,b1)) *(1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,t0+inter_screen*5,t0+inter_screen*6,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*7,b0,b1))  * (1-beta(t0+inter_screen*8,b0,b1))	 	 * (1-beta(t0+inter_screen*9,b0,b1)) *dens_wq_q(z,t0+inter_screen*6,t0+inter_screen*7,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*8,b0,b1))  *(1-beta(t0+inter_screen*9,b0,b1)) 	 	 *dens_wq_q(z,t0+inter_screen*7,t0+inter_screen*8,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + (1-beta(t0+inter_screen*9,b0,b1))  *dens_wq_q(z,t0+inter_screen*8,t0+inter_screen*9,10,t0,u_prec, sd_prec,scale_sj,shape_sj)
+    result= result + dens_w1_q(z,t0+inter_screen*9,t0 +inter_screen*10,10,t0,u_prec, sd_prec,scale_sj,shape_sj)		
+    return(result)		
+  }
+  
+}
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+data_clin_10=data_10[data_10$diagnosis==0,]
+
+dens_prod_10=function(b0, b1, u_prec, sd_prec,scale_sj,shape_sj)
+{
+  res=0
+  for(i in 1:nrow(data_clin_10))
+  {
+    res=res+log(I_dens (data_clin_10$age_clinical[i],data_clin_10$time_diagnosis[i] , data_clin_10$t0[i], b0, b1, u_prec, sd_prec,scale_sj,shape_sj))
+  }
+  return(res)
+}
+
+dens_prod_10(b0_def, b1_def,  u_def, s_def,scale_def,shape_def)
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+##################################################################################################################################################
+
+
+
+min_bo=c(-5,-5,0.001, 0.001, 0.001,0.001)
+max_bo=c( 5, 5,10  ,10,1000,1000 )
+
+
+
+log_lik_age_10_new=function(par)
+{
+  b0=par[1]
+  b1=par[2]
+  u_prec=par[3]
+  sd_prec=par[4]
+  scale_sj=par[5]
+  shape_sj=par[6]
+  
+   
+   if(sum(min_bo<par)==length(par) &  sum(par<max_bo)==length(par))
+   {
+  res=0
+  for (i in 1:K)
+  {
+    for(j in 1:(tmax-tmin+1))
+    {
+      a=D(i, j+39,  b0,  b1, u_prec, sd_prec,scale_sj,shape_sj)
+      b=I(i , j+39,  b0,  b1, u_prec, sd_prec,scale_sj,shape_sj)
+      res=res+S_10[i,j]*log(a)
+      res=res+N_10[i,j]*log(1-a-b)
+    }
+  }
+  return(-1*res - dens_prod_10(b0, b1, u_prec, sd_prec,scale_sj,shape_sj))
+} else{
+return(Inf)
+}
+}
+
+log_lik_age_10_new(ini)
+res_age_10_new=nlm(p=ini,log_lik_age_10_new,hessian=TRUE)
+
+
+
+
+
+
+distance=function(par)
+{
+  b0=par[1]
+  b1=par[2]
+  u_prec=par[3]
+  sd_prec=par[4]
+  shape_sj=par[5]
+  rate_sj=par[6]
+		
+DDD=matrix(NA,nrow=K,ncol=25)
+III=matrix(NA,nrow=K,ncol=25)
+res=0
+	for( i in 1:K)
+	{
+		for(j in 1:25)
+		{
+			III[i,j]=I( i , j+39,   b0,  b1, u_prec, sd_prec,scale_sj,shape_sj)*N_desired	
+			DDD[i,j]=D( i , j+39,   b0,  b1, u_prec, sd_prec,scale_sj,shape_sj)*N_desired
+		}
+	}
+	
+		for( i in 1:K)
+	{
+		for(j in 1:25)
+		{
+		res=res+((R_10[i,j]-III[i,j])^2/III[i,j])
+		res=res+((S_10[i,j]-DDD[i,j])^2/DDD[i,j])
+		}
+	}
+	return(res)	
+}
+
+save.image("C:\\Users\\Ayman\\Desktop\\Rcpp code FINAL\\Adjusted\\LOG_LOGISTIC\\LLogis_HIGH_MST\\log_logis_res_HIGH_MST_K=10_N=10K.Rdata")
+
+
